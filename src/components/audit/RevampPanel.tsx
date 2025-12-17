@@ -3,7 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { RefreshCw, ChevronDown, ArrowRight, Copy, CheckCircle } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { RefreshCw, ChevronDown, Copy, FileSpreadsheet, ListChecks } from 'lucide-react';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -11,8 +13,16 @@ interface RevampPanelProps {
   audit: Audit;
 }
 
+interface RevampReadyRow {
+  structureElement: string;
+  sectionTitle: string;
+  contentSummary: string;
+  purpose: string;
+  comments: string;
+}
+
 export function RevampPanel({ audit }: RevampPanelProps) {
-  const { revampedContent } = audit;
+  const { revampedContent, metadata, headings, url } = audit;
   const { toast } = useToast();
 
   const hasRevamp = revampedContent?.length > 0;
@@ -21,6 +31,112 @@ export function RevampPanel({ audit }: RevampPanelProps) {
     navigator.clipboard.writeText(text);
     toast({ title: 'Copied to clipboard' });
   };
+
+  // Generate ready-to-use table data from revamp + metadata
+  const generateReadyTable = (): RevampReadyRow[] => {
+    const rows: RevampReadyRow[] = [];
+
+    // Meta Title
+    rows.push({
+      structureElement: 'Meta Title',
+      sectionTitle: metadata?.title || revampedContent?.find(r => r.sectionType === 'meta_title')?.recommended || '[Generate from AI]',
+      contentSummary: 'Primary keyword + emotional hook; under 60 chars',
+      purpose: 'High CTR in SERPs',
+      comments: 'Aligns with user search intent',
+    });
+
+    // Meta Description
+    rows.push({
+      structureElement: 'Meta Description',
+      sectionTitle: metadata?.description || revampedContent?.find(r => r.sectionType === 'meta_description')?.recommended || '[Generate from AI]',
+      contentSummary: 'Short, actionable, motivational; under 155 chars',
+      purpose: 'Featured snippet opportunity',
+      comments: 'Combines primary keyword + value promise',
+    });
+
+    // H1
+    const h1Section = revampedContent?.find(r => r.sectionType === 'H1' || r.sectionType === 'h1');
+    const h1Heading = headings?.find(h => h.tag === 'H1' || h.tag === 'h1');
+    rows.push({
+      structureElement: 'H1',
+      sectionTitle: h1Section?.recommended || h1Heading?.text || '[Main Heading]',
+      contentSummary: 'Captures search intent & emotional hook',
+      purpose: 'Main article heading; matches URL slug',
+      comments: 'Single H1 per page; keyword-rich',
+    });
+
+    // Process H2 and H3 sections from revamped content
+    revampedContent?.forEach((section, idx) => {
+      if (section.sectionType.toLowerCase().startsWith('h2') || section.sectionType === 'section') {
+        rows.push({
+          structureElement: 'H2',
+          sectionTitle: section.recommended.split('.')[0] || `Section ${idx + 1}`,
+          contentSummary: section.recommended.substring(0, 150) + (section.recommended.length > 150 ? '...' : ''),
+          purpose: section.reasoning || 'Educational & authoritative section',
+          comments: section.keywords?.join(', ') || 'Optimized for target queries',
+        });
+      }
+      if (section.sectionType.toLowerCase().startsWith('h3') || section.sectionType === 'subsection') {
+        rows.push({
+          structureElement: 'H3',
+          sectionTitle: section.recommended.split('.')[0] || `Subsection ${idx + 1}`,
+          contentSummary: section.recommended.substring(0, 150) + (section.recommended.length > 150 ? '...' : ''),
+          purpose: section.reasoning || 'Detailed breakdown',
+          comments: section.keywords?.join(', ') || 'Supports parent H2',
+        });
+      }
+    });
+
+    // Add FAQ section suggestion
+    rows.push({
+      structureElement: 'H2',
+      sectionTitle: 'FAQs About [Topic]',
+      contentSummary: 'Answer 4-5 short questions: What is? Why important? Examples? How to improve?',
+      purpose: 'Boosts featured snippet chances',
+      comments: 'Schema-friendly; use FAQPage structured data',
+    });
+
+    // Add Conclusion
+    rows.push({
+      structureElement: 'H2',
+      sectionTitle: 'Conclusion: [Actionable Takeaway]',
+      contentSummary: 'Wrap up with motivational CTA and internal links',
+      purpose: 'Conversion & internal link anchor',
+      comments: 'Links to relevant programs/articles',
+    });
+
+    // Image Alt Texts
+    rows.push({
+      structureElement: 'Image Alt Texts',
+      sectionTitle: 'Descriptive alt text for all images',
+      contentSummary: 'e.g., "A person demonstrating [topic] in action"',
+      purpose: 'Supports image SEO',
+      comments: 'Avoids over-optimization; keeps natural tone',
+    });
+
+    return rows;
+  };
+
+  const copyTableAsCSV = () => {
+    const rows = generateReadyTable();
+    const headers = ['Structure Element', 'Section Title', 'Content/Focus Summary', 'Purpose', 'Comments', 'URL'];
+    const csvContent = [
+      headers.join('\t'),
+      ...rows.map(row => [
+        row.structureElement,
+        row.sectionTitle,
+        row.contentSummary,
+        row.purpose,
+        row.comments,
+        url || ''
+      ].join('\t'))
+    ].join('\n');
+    
+    navigator.clipboard.writeText(csvContent);
+    toast({ title: 'Table copied! Paste directly into Google Sheets or Excel' });
+  };
+
+  const readyRows = generateReadyTable();
 
   return (
     <div className="space-y-6">
@@ -35,20 +151,105 @@ export function RevampPanel({ audit }: RevampPanelProps) {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <RefreshCw className="h-5 w-5" />
-                Content Revamp Suggestions ({revampedContent.length} sections)
-              </CardTitle>
-            </CardHeader>
-          </Card>
+        <Tabs defaultValue="ready" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="ready" className="flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4" />
+              Revamp Ready (Copy-Paste)
+            </TabsTrigger>
+            <TabsTrigger value="suggestions" className="flex items-center gap-2">
+              <ListChecks className="h-4 w-4" />
+              Detailed Suggestions
+            </TabsTrigger>
+          </TabsList>
 
-          {revampedContent.map((section, index) => (
-            <RevampSection key={index} section={section} index={index} onCopy={copyToClipboard} />
-          ))}
-        </div>
+          {/* REVAMP READY TAB - Copy-paste friendly table */}
+          <TabsContent value="ready" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <FileSpreadsheet className="h-5 w-5" />
+                    Ready-to-Use Blog Structure
+                  </CardTitle>
+                  <Button onClick={copyTableAsCSV} className="flex items-center gap-2">
+                    <Copy className="h-4 w-4" />
+                    Copy for Sheets/Excel
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Click "Copy for Sheets/Excel" to paste directly into Google Sheets or Excel. All columns included.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[120px]">Structure Element</TableHead>
+                        <TableHead className="min-w-[200px]">Section Title</TableHead>
+                        <TableHead className="min-w-[250px]">Content/Focus Summary</TableHead>
+                        <TableHead className="min-w-[180px]">Purpose</TableHead>
+                        <TableHead className="min-w-[180px]">Comments</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {readyRows.map((row, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            <Badge variant={
+                              row.structureElement === 'Meta Title' || row.structureElement === 'Meta Description' ? 'default' :
+                              row.structureElement === 'H1' ? 'destructive' :
+                              row.structureElement === 'H2' ? 'secondary' :
+                              row.structureElement === 'H3' ? 'outline' : 'outline'
+                            }>
+                              {row.structureElement}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium">{row.sectionTitle}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{row.contentSummary}</TableCell>
+                          <TableCell className="text-sm">{row.purpose}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{row.comments}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* URL Reference */}
+            <Card>
+              <CardContent className="py-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-medium">Target URL:</span>
+                    <span className="text-sm text-muted-foreground ml-2">{url}</span>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => copyToClipboard(url)}>
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* DETAILED SUGGESTIONS TAB - Original functionality */}
+          <TabsContent value="suggestions" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <RefreshCw className="h-5 w-5" />
+                  Content Revamp Suggestions ({revampedContent.length} sections)
+                </CardTitle>
+              </CardHeader>
+            </Card>
+
+            {revampedContent.map((section, index) => (
+              <RevampSection key={index} section={section} index={index} onCopy={copyToClipboard} />
+            ))}
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );
