@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Upload, Trash2, Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Search, Upload, Trash2, Loader2, TrendingUp, TrendingDown, Minus, Sparkles } from 'lucide-react';
 
 interface KeywordsPanelProps {
   auditId: string;
@@ -163,6 +163,41 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
     },
   });
 
+  const classifyMutation = useMutation({
+    mutationFn: async () => {
+      if (keywords.length === 0) throw new Error('No keywords to classify');
+      
+      const keywordsToClassify = keywords.filter(k => !k.intent).slice(0, 50); // Batch of 50
+      if (keywordsToClassify.length === 0) throw new Error('All keywords already classified');
+      
+      const { data, error } = await supabase.functions.invoke('classify-keywords', {
+        body: { 
+          keywords: keywordsToClassify.map(k => ({
+            id: k.id,
+            keyword: k.keyword,
+            position: k.position,
+            clicks: k.clicks,
+            impressions: k.impressions,
+          })),
+          auditId 
+        }
+      });
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['keywords', auditId] });
+      toast({ 
+        title: 'Keywords classified', 
+        description: `${data.updatedCount} keywords classified with intent.` 
+      });
+    },
+    onError: (error) => {
+      toast({ title: 'Classification failed', description: error.message, variant: 'destructive' });
+    },
+  });
+
   const getIntentBadge = (intent?: string) => {
     if (!intent) return null;
     const colors: Record<string, string> = {
@@ -244,10 +279,27 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
       {/* Keywords Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Search className="h-5 w-5" />
-            Keywords ({keywords.length})
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Search className="h-5 w-5" />
+              Keywords ({keywords.length})
+            </CardTitle>
+            {keywords.length > 0 && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => classifyMutation.mutate()}
+                disabled={classifyMutation.isPending || keywords.every(k => k.intent)}
+              >
+                {classifyMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4 mr-2" />
+                )}
+                Classify Intent
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (

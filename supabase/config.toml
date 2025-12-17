@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.generate-article-draft]
 verify_jwt = false
+
+[functions.classify-keywords]
+verify_jwt = false
