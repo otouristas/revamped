@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Upload, Trash2, Loader2 } from 'lucide-react';
+import { Search, Upload, Trash2, Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface KeywordsPanelProps {
   auditId: string;
@@ -20,6 +20,11 @@ interface Keyword {
   impressions: number;
   clicks: number;
   position: number;
+  prev_impressions: number;
+  prev_clicks: number;
+  prev_position: number;
+  ctr: number;
+  prev_ctr: number;
   intent?: string;
   cluster?: string;
 }
@@ -49,7 +54,7 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
       if (!user) throw new Error('Not authenticated');
       
       const lines = input.trim().split('\n');
-      const parsedKeywords: Omit<Keyword, 'id'>[] = [];
+      const parsedKeywords: Omit<Keyword, 'id' | 'intent' | 'cluster'>[] = [];
       
       for (const line of lines) {
         const parts = line.split('\t');
@@ -59,14 +64,22 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
           if (firstCol === 'top queries' || firstCol === 'query' || firstCol === 'keyword') continue;
           
           // GSC Comparison format: Query | Last Clicks | Prev Clicks | Last Impressions | Prev Impressions | Last CTR | Prev CTR | Last Position | Prev Position
-          // Or simple format: Keyword | Impressions | Clicks | Position
           if (parts.length >= 8) {
-            // GSC comparison format - use "Last 3 months" values
+            const parseCtr = (val: string) => {
+              const cleaned = val?.replace(/[%,]/g, '').trim();
+              return parseFloat(cleaned) || 0;
+            };
+            
             parsedKeywords.push({
               keyword: parts[0].trim(),
-              clicks: parseInt(parts[1]?.replace(/,/g, '')) || 0,      // Last 3 months Clicks
-              impressions: parseInt(parts[3]?.replace(/,/g, '')) || 0, // Last 3 months Impressions
-              position: parseFloat(parts[7]?.replace(/,/g, '')) || 0,  // Last 3 months Position
+              clicks: parseInt(parts[1]?.replace(/,/g, '')) || 0,
+              prev_clicks: parseInt(parts[2]?.replace(/,/g, '')) || 0,
+              impressions: parseInt(parts[3]?.replace(/,/g, '')) || 0,
+              prev_impressions: parseInt(parts[4]?.replace(/,/g, '')) || 0,
+              ctr: parseCtr(parts[5]),
+              prev_ctr: parseCtr(parts[6]),
+              position: parseFloat(parts[7]?.replace(/,/g, '')) || 0,
+              prev_position: parseFloat(parts[8]?.replace(/,/g, '')) || 0,
             });
           } else if (parts.length >= 4) {
             // Simple format: Keyword | Impressions | Clicks | Position
@@ -75,6 +88,11 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
               impressions: parseInt(parts[1]?.replace(/,/g, '')) || 0,
               clicks: parseInt(parts[2]?.replace(/,/g, '')) || 0,
               position: parseFloat(parts[3]?.replace(/,/g, '')) || 0,
+              prev_impressions: 0,
+              prev_clicks: 0,
+              prev_position: 0,
+              ctr: 0,
+              prev_ctr: 0,
             });
           } else if (parts.length >= 1) {
             // Just keyword
@@ -83,6 +101,11 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
               impressions: 0,
               clicks: 0,
               position: 0,
+              prev_impressions: 0,
+              prev_clicks: 0,
+              prev_position: 0,
+              ctr: 0,
+              prev_ctr: 0,
             });
           }
         }
@@ -98,6 +121,11 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
           impressions: k.impressions,
           clicks: k.clicks,
           position: k.position,
+          prev_impressions: k.prev_impressions,
+          prev_clicks: k.prev_clicks,
+          prev_position: k.prev_position,
+          ctr: k.ctr,
+          prev_ctr: k.prev_ctr,
         }))
       );
 
@@ -146,6 +174,31 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
     return <Badge className={colors[intent] || ''}>{intent}</Badge>;
   };
 
+  const getTrendIcon = (current: number, previous: number, inverse = false) => {
+    if (!previous || previous === 0) return <Minus className="h-3 w-3 text-muted-foreground" />;
+    const diff = current - previous;
+    const isPositive = inverse ? diff < 0 : diff > 0;
+    const isNegative = inverse ? diff > 0 : diff < 0;
+    
+    if (isPositive) return <TrendingUp className="h-3 w-3 text-green-600" />;
+    if (isNegative) return <TrendingDown className="h-3 w-3 text-red-600" />;
+    return <Minus className="h-3 w-3 text-muted-foreground" />;
+  };
+
+  const formatChange = (current: number, previous: number, inverse = false) => {
+    if (!previous || previous === 0) return null;
+    const diff = current - previous;
+    const percent = ((diff / previous) * 100).toFixed(0);
+    const isPositive = inverse ? diff < 0 : diff > 0;
+    const isNegative = inverse ? diff > 0 : diff < 0;
+    
+    return (
+      <span className={`text-xs ${isPositive ? 'text-green-600' : isNegative ? 'text-red-600' : 'text-muted-foreground'}`}>
+        {diff > 0 ? '+' : ''}{percent}%
+      </span>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Import Section */}
@@ -156,12 +209,12 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
             Import GSC Keywords
           </CardTitle>
           <CardDescription>
-            Paste keywords from Google Search Console. Supports both comparison format (Query | Last Clicks | Prev Clicks | Last Impressions | Prev Impressions | Last CTR | Prev CTR | Last Position | Prev Position) and simple format (Keyword | Impressions | Clicks | Position)
+            Paste keywords from Google Search Console with comparison data (Last 3 months vs Previous 3 months)
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Textarea
-            placeholder="keyword1&#9;1000&#9;50&#9;3.2&#10;keyword2&#9;500&#9;25&#9;5.1"
+            placeholder="Paste GSC export with comparison columns..."
             value={pasteInput}
             onChange={(e) => setPasteInput(e.target.value)}
             rows={6}
@@ -202,42 +255,76 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
           ) : keywords.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Keyword</TableHead>
-                  <TableHead className="text-right">Impressions</TableHead>
-                  <TableHead className="text-right">Clicks</TableHead>
-                  <TableHead className="text-right">Position</TableHead>
-                  <TableHead>Intent</TableHead>
-                  <TableHead>Cluster</TableHead>
-                  <TableHead className="w-16"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {keywords.map((kw) => (
-                  <TableRow key={kw.id}>
-                    <TableCell className="font-medium">{kw.keyword}</TableCell>
-                    <TableCell className="text-right">{kw.impressions.toLocaleString()}</TableCell>
-                    <TableCell className="text-right">{kw.clicks.toLocaleString()}</TableCell>
-                    <TableCell className="text-right">{kw.position.toFixed(1)}</TableCell>
-                    <TableCell>{getIntentBadge(kw.intent)}</TableCell>
-                    <TableCell>
-                      {kw.cluster && <Badge variant="outline">{kw.cluster}</Badge>}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deleteMutation.mutate(kw.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Keyword</TableHead>
+                    <TableHead className="text-right">Clicks</TableHead>
+                    <TableHead className="text-right">Δ</TableHead>
+                    <TableHead className="text-right">Impressions</TableHead>
+                    <TableHead className="text-right">Δ</TableHead>
+                    <TableHead className="text-right">CTR</TableHead>
+                    <TableHead className="text-right">Δ</TableHead>
+                    <TableHead className="text-right">Position</TableHead>
+                    <TableHead className="text-right">Δ</TableHead>
+                    <TableHead>Intent</TableHead>
+                    <TableHead>Cluster</TableHead>
+                    <TableHead className="w-10"></TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {keywords.map((kw) => (
+                    <TableRow key={kw.id}>
+                      <TableCell className="font-medium max-w-[200px] truncate" title={kw.keyword}>
+                        {kw.keyword}
+                      </TableCell>
+                      <TableCell className="text-right">{kw.clicks.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {getTrendIcon(kw.clicks, kw.prev_clicks)}
+                          {formatChange(kw.clicks, kw.prev_clicks)}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">{kw.impressions.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {getTrendIcon(kw.impressions, kw.prev_impressions)}
+                          {formatChange(kw.impressions, kw.prev_impressions)}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">{kw.ctr?.toFixed(2)}%</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {getTrendIcon(kw.ctr, kw.prev_ctr)}
+                          {formatChange(kw.ctr, kw.prev_ctr)}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">{kw.position?.toFixed(1)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {getTrendIcon(kw.position, kw.prev_position, true)}
+                          {formatChange(kw.position, kw.prev_position, true)}
+                        </div>
+                      </TableCell>
+                      <TableCell>{getIntentBadge(kw.intent)}</TableCell>
+                      <TableCell>
+                        {kw.cluster && <Badge variant="outline">{kw.cluster}</Badge>}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteMutation.mutate(kw.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
               No keywords yet. Paste your GSC data above.

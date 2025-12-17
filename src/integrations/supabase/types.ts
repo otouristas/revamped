@@ -139,12 +139,17 @@ export type Database = {
           clicks: number | null
           cluster: string | null
           created_at: string
+          ctr: number | null
           id: string
           impressions: number | null
           intent: string | null
           keyword: string
           mapped_block: string | null
           position: number | null
+          prev_clicks: number | null
+          prev_ctr: number | null
+          prev_impressions: number | null
+          prev_position: number | null
           user_id: string
         }
         Insert: {
@@ -152,12 +157,17 @@ export type Database = {
           clicks?: number | null
           cluster?: string | null
           created_at?: string
+          ctr?: number | null
           id?: string
           impressions?: number | null
           intent?: string | null
           keyword: string
           mapped_block?: string | null
           position?: number | null
+          prev_clicks?: number | null
+          prev_ctr?: number | null
+          prev_impressions?: number | null
+          prev_position?: number | null
           user_id: string
         }
         Update: {
@@ -165,12 +175,17 @@ export type Database = {
           clicks?: number | null
           cluster?: string | null
           created_at?: string
+          ctr?: number | null
           id?: string
           impressions?: number | null
           intent?: string | null
           keyword?: string
           mapped_block?: string | null
           position?: number | null
+          prev_clicks?: number | null
+          prev_ctr?: number | null
+          prev_impressions?: number | null
+          prev_position?: number | null
           user_id?: string
         }
         Relationships: [
