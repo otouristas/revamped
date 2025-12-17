@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { RefreshCw, ChevronDown, Copy, FileSpreadsheet, ListChecks } from 'lucide-react';
+import { RefreshCw, ChevronDown, Copy, FileSpreadsheet, ListChecks, FileText, Loader2, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 interface RevampPanelProps {
   audit: Audit;
@@ -24,6 +25,8 @@ interface RevampReadyRow {
 export function RevampPanel({ audit }: RevampPanelProps) {
   const { revampedContent, metadata, headings, url } = audit;
   const { toast } = useToast();
+  const [fullDraft, setFullDraft] = useState<string>('');
+  const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
 
   const hasRevamp = revampedContent?.length > 0;
 
@@ -155,11 +158,15 @@ export function RevampPanel({ audit }: RevampPanelProps) {
           <TabsList>
             <TabsTrigger value="ready" className="flex items-center gap-2">
               <FileSpreadsheet className="h-4 w-4" />
-              Revamp Ready (Copy-Paste)
+              Revamp Ready
+            </TabsTrigger>
+            <TabsTrigger value="draft" className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Full Article Draft
             </TabsTrigger>
             <TabsTrigger value="suggestions" className="flex items-center gap-2">
               <ListChecks className="h-4 w-4" />
-              Detailed Suggestions
+              Suggestions
             </TabsTrigger>
           </TabsList>
 
@@ -230,6 +237,80 @@ export function RevampPanel({ audit }: RevampPanelProps) {
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* FULL ARTICLE DRAFT TAB */}
+          <TabsContent value="draft" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Full Article Draft
+                  </CardTitle>
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={async () => {
+                        setIsGeneratingDraft(true);
+                        try {
+                          const { data, error } = await supabase.functions.invoke('generate-article-draft', {
+                            body: { 
+                              revampedContent,
+                              metadata,
+                              url,
+                              headings
+                            }
+                          });
+                          if (error) throw error;
+                          setFullDraft(data.draft);
+                          toast({ title: 'Article draft generated!' });
+                        } catch (err) {
+                          toast({ title: 'Failed to generate draft', variant: 'destructive' });
+                        } finally {
+                          setIsGeneratingDraft(false);
+                        }
+                      }}
+                      disabled={isGeneratingDraft}
+                    >
+                      {isGeneratingDraft ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          Generate Full Draft
+                        </>
+                      )}
+                    </Button>
+                    {fullDraft && (
+                      <Button variant="outline" onClick={() => copyToClipboard(fullDraft)}>
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copy All
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Generate complete prose content for each section, ready for publishing.
+                </p>
+              </CardHeader>
+              <CardContent>
+                {!fullDraft ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>Click "Generate Full Draft" to create complete article content.</p>
+                  </div>
+                ) : (
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    <div className="whitespace-pre-wrap font-mono text-sm bg-muted/50 p-6 rounded-lg overflow-x-auto">
+                      {fullDraft}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
