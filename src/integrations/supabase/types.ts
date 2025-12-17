@@ -14,7 +14,196 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      audits: {
+        Row: {
+          ai_analysis: Json | null
+          body_content: Json | null
+          created_at: string
+          ctas: Json | null
+          headings: Json | null
+          id: string
+          links: Json | null
+          markdown: string | null
+          media: Json | null
+          metadata: Json | null
+          raw_html: string | null
+          revamped_content: Json | null
+          status: string
+          updated_at: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          ai_analysis?: Json | null
+          body_content?: Json | null
+          created_at?: string
+          ctas?: Json | null
+          headings?: Json | null
+          id?: string
+          links?: Json | null
+          markdown?: string | null
+          media?: Json | null
+          metadata?: Json | null
+          raw_html?: string | null
+          revamped_content?: Json | null
+          status?: string
+          updated_at?: string
+          url: string
+          user_id: string
+        }
+        Update: {
+          ai_analysis?: Json | null
+          body_content?: Json | null
+          created_at?: string
+          ctas?: Json | null
+          headings?: Json | null
+          id?: string
+          links?: Json | null
+          markdown?: string | null
+          media?: Json | null
+          metadata?: Json | null
+          raw_html?: string | null
+          revamped_content?: Json | null
+          status?: string
+          updated_at?: string
+          url?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      guest_posts: {
+        Row: {
+          acceptance_probability: number | null
+          anchor_placements: Json | null
+          audit_id: string
+          content: string
+          created_at: string
+          editorial_angle: string | null
+          editorial_risk_score: number | null
+          id: string
+          risk_level: string | null
+          spam_likelihood_score: number | null
+          target_urls: Json | null
+          title: string
+          updated_at: string
+          user_id: string
+          word_count: number | null
+        }
+        Insert: {
+          acceptance_probability?: number | null
+          anchor_placements?: Json | null
+          audit_id: string
+          content: string
+          created_at?: string
+          editorial_angle?: string | null
+          editorial_risk_score?: number | null
+          id?: string
+          risk_level?: string | null
+          spam_likelihood_score?: number | null
+          target_urls?: Json | null
+          title: string
+          updated_at?: string
+          user_id: string
+          word_count?: number | null
+        }
+        Update: {
+          acceptance_probability?: number | null
+          anchor_placements?: Json | null
+          audit_id?: string
+          content?: string
+          created_at?: string
+          editorial_angle?: string | null
+          editorial_risk_score?: number | null
+          id?: string
+          risk_level?: string | null
+          spam_likelihood_score?: number | null
+          target_urls?: Json | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+          word_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guest_posts_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "audits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      keywords: {
+        Row: {
+          audit_id: string
+          clicks: number | null
+          cluster: string | null
+          created_at: string
+          id: string
+          impressions: number | null
+          intent: string | null
+          keyword: string
+          mapped_block: string | null
+          position: number | null
+          user_id: string
+        }
+        Insert: {
+          audit_id: string
+          clicks?: number | null
+          cluster?: string | null
+          created_at?: string
+          id?: string
+          impressions?: number | null
+          intent?: string | null
+          keyword: string
+          mapped_block?: string | null
+          position?: number | null
+          user_id: string
+        }
+        Update: {
+          audit_id?: string
+          clicks?: number | null
+          cluster?: string | null
+          created_at?: string
+          id?: string
+          impressions?: number | null
+          intent?: string | null
+          keyword?: string
+          mapped_block?: string | null
+          position?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "keywords_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "audits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
