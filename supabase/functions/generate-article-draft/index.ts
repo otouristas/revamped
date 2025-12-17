@@ -18,52 +18,71 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY is not configured');
     }
 
-    // Build sections list for structured output
-    const sectionsList = sections?.map((s: any, idx: number) => 
-      `${idx + 1}. [${s.element}] ${s.title}\n   Summary: ${s.summary}`
-    ).join('\n') || '';
+    // Build detailed sections list with clear instructions per type
+    const sectionInstructions = sections?.map((s: any, idx: number) => {
+      let instruction = '';
+      switch(s.element) {
+        case 'Meta Title':
+          instruction = 'Write ONLY the optimized title text, under 60 characters. No description, just the title.';
+          break;
+        case 'Meta Description':
+          instruction = 'Write ONLY the meta description text, under 155 characters. Actionable and compelling.';
+          break;
+        case 'H1':
+          instruction = 'Write ONLY the main headline text. One powerful sentence that captures search intent.';
+          break;
+        case 'H2':
+          instruction = 'Write 150-250 words of complete prose content for this section. Include facts, examples, and actionable insights. NO HTML tags.';
+          break;
+        case 'H3':
+          instruction = 'Write 80-150 words of detailed supporting content. NO HTML tags.';
+          break;
+        case 'Image Alt Texts':
+          instruction = 'Write 3-5 descriptive alt text examples, each on a new line. Format: "Alt: [description]"';
+          break;
+        default:
+          instruction = 'Write appropriate content for this section type.';
+      }
+      return `${idx + 1}. [${s.element}] "${s.title}"
+   Current summary: ${s.summary}
+   INSTRUCTION: ${instruction}`;
+    }).join('\n\n') || '';
 
-    const prompt = `You are an expert SEO content writer. Generate COMPLETE, PUBLICATION-READY content for each section of this article.
+    const prompt = `You are an expert SEO content writer. Generate publication-ready content for each section below.
 
-URL: ${url}
-Current Title: ${metadata?.title || 'N/A'}
-Current Description: ${metadata?.description || 'N/A'}
+TARGET URL: ${url}
+CURRENT TITLE: ${metadata?.title || 'N/A'}
 
-SECTIONS TO WRITE:
-${sectionsList}
+SECTIONS TO GENERATE (follow instructions for each):
 
-REQUIREMENTS:
-1. Write COMPLETE prose for each section
-2. For Meta Title: under 60 characters, keyword-rich
-3. For Meta Description: under 155 characters, actionable
-4. For H1: compelling, matches search intent
-5. For H2 sections: 150-250 words each, comprehensive coverage
-6. For H3 sections: 80-150 words each, detailed breakdown
-7. For FAQs: 4-5 Q&A pairs, concise answers
-8. For Conclusion: strong CTA, summarize key points
-9. For Image Alt Texts: 3-5 descriptive examples
-10. Include [INTERNAL LINK: topic] and [EXTERNAL LINK: source] placeholders
-11. Optimize for AI Overview eligibility
+${sectionInstructions}
 
-Respond with a JSON object containing a "sections" array where each object has:
-- "element": the structure element type
-- "title": the optimized section title
-- "content": the complete prose content for that section
+CRITICAL RULES:
+1. For Meta Title: ONLY output the title text (under 60 chars), nothing else
+2. For Meta Description: ONLY output the description text (under 155 chars), nothing else  
+3. For H1: ONLY output the headline text, nothing else
+4. For H2/H3: Write FULL PARAGRAPHS of prose content. NO HTML tags. Plain text only.
+5. For FAQs: Write Q&A pairs in plain text format:
+   Q: [question]
+   A: [answer]
+   (Repeat for 4-5 questions)
+6. Include [INTERNAL LINK: topic] placeholders where relevant
+7. Include [EXTERNAL LINK: source] placeholders where relevant
 
-Example format:
+RESPONSE FORMAT - Return valid JSON:
 {
   "sections": [
-    {"element": "Meta Title", "title": "Optimized Title Here", "content": "Your 60-char optimized title"},
-    {"element": "Meta Description", "title": "Meta Description", "content": "Your 155-char meta description..."},
-    {"element": "H1", "title": "Main Heading", "content": "Your compelling H1 headline"},
-    {"element": "H2", "title": "Section Title", "content": "Full paragraph content for this section..."},
-    ...
+    {"element": "Meta Title", "title": "Meta Title", "content": "[your 60-char title]"},
+    {"element": "Meta Description", "title": "Meta Description", "content": "[your 155-char description]"},
+    {"element": "H1", "title": "[optimized H1]", "content": "[same as title - just the headline]"},
+    {"element": "H2", "title": "[section title]", "content": "[150-250 words of prose...]"},
+    ...continue for all ${sections?.length || 0} sections
   ]
 }
 
-Generate the complete structured response now:`;
+Generate now:`;
 
-    console.log('Generating structured article sections...');
+    console.log('Generating structured article sections, count:', sections?.length);
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -76,7 +95,7 @@ Generate the complete structured response now:`;
         messages: [
           { 
             role: 'system', 
-            content: 'You are an expert SEO content writer. Always respond with valid JSON containing a "sections" array. Each section must have "element", "title", and "content" fields.' 
+            content: 'You are an expert SEO content writer. Respond ONLY with valid JSON. Never include HTML tags in content. Follow word count guidelines exactly.' 
           },
           { role: 'user', content: prompt }
         ],
@@ -108,16 +127,24 @@ Generate the complete structured response now:`;
     
     console.log('Raw AI response length:', content.length);
 
-    // Parse JSON from response (handle markdown code blocks)
+    // Parse JSON from response
     let parsed;
     try {
-      // Try to extract JSON from markdown code block if present
       const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
       const jsonStr = jsonMatch ? jsonMatch[1].trim() : content.trim();
       parsed = JSON.parse(jsonStr);
+      
+      // Clean up any HTML tags that might have snuck in
+      if (parsed.sections) {
+        parsed.sections = parsed.sections.map((s: any) => ({
+          ...s,
+          content: s.content?.replace(/<[^>]*>/g, '').trim() || s.content,
+          title: s.title?.replace(/<[^>]*>/g, '').trim() || s.title,
+        }));
+      }
     } catch (parseError) {
       console.error('Failed to parse JSON response:', parseError);
-      // Fallback: return empty sections
+      console.error('Raw content:', content.substring(0, 500));
       parsed = { sections: [] };
     }
 
