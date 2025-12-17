@@ -11,78 +11,161 @@ serve(async (req) => {
   }
 
   try {
-    const { revampedContent, metadata, url, headings, sections } = await req.json();
+    const { metadata, url, headings, topic } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY is not configured');
     }
 
-    // Build detailed sections list with clear instructions per type
-    const sectionInstructions = sections?.map((s: any, idx: number) => {
+    // Extract topic from URL or metadata
+    const pageTopic = topic || metadata?.title || url?.split('/').pop()?.replace(/-/g, ' ') || 'the topic';
+
+    // Build sections list from ACTUAL headings
+    const sections: { element: string; title: string; index: number }[] = [];
+    
+    // Always add Meta Title and Meta Description first
+    sections.push({ element: 'Meta Title', title: metadata?.title || `[Optimized title about ${pageTopic}]`, index: 0 });
+    sections.push({ element: 'Meta Description', title: metadata?.description || `[Optimized description about ${pageTopic}]`, index: 1 });
+    
+    // Process ALL headings in order
+    headings?.forEach((h: { tag: string; text: string }, idx: number) => {
+      const tag = h.tag?.toUpperCase();
+      if (tag === 'H1' || tag === 'H2' || tag === 'H3') {
+        sections.push({ element: tag, title: h.text, index: sections.length });
+      }
+    });
+
+    // Check if FAQ exists, if not add it
+    const hasFaq = sections.some(s => s.title?.toLowerCase().includes('faq'));
+    if (!hasFaq) {
+      sections.push({ element: 'H2', title: `FAQs About ${pageTopic}`, index: sections.length });
+    }
+
+    // Check if Conclusion exists, if not add it
+    const hasConclusion = sections.some(s => s.title?.toLowerCase().includes('conclusion'));
+    if (!hasConclusion) {
+      sections.push({ element: 'H2', title: `Conclusion`, index: sections.length });
+    }
+
+    // Add Image Alt Texts
+    sections.push({ element: 'Image Alt Texts', title: 'Descriptive alt texts for images', index: sections.length });
+
+    // Build detailed instructions for EACH section
+    const sectionPrompts = sections.map((s, idx) => {
+      let wordCount = '';
       let instruction = '';
+      
       switch(s.element) {
         case 'Meta Title':
-          instruction = 'Write ONLY the optimized title text, under 60 characters. No description, just the title.';
+          wordCount = '50-60 characters';
+          instruction = `Write an SEO-optimized title that includes the primary keyword, creates urgency or curiosity, and is under 60 characters. Make it compelling for clicks.`;
           break;
         case 'Meta Description':
-          instruction = 'Write ONLY the meta description text, under 155 characters. Actionable and compelling.';
+          wordCount = '140-155 characters';
+          instruction = `Write a meta description that summarizes the value proposition, includes a call-to-action, and entices users to click. Must be under 155 characters.`;
           break;
         case 'H1':
-          instruction = 'Write ONLY the main headline text. One powerful sentence that captures search intent.';
+          wordCount = '60-80 characters';
+          instruction = `Write the main page headline. It should match search intent, include the primary keyword, and be compelling. This is the ONLY H1 on the page.`;
           break;
         case 'H2':
-          instruction = 'Write 150-250 words of complete prose content for this section. Include facts, examples, and actionable insights. NO HTML tags.';
+          if (s.title.toLowerCase().includes('faq')) {
+            wordCount = '300-400 words';
+            instruction = `Generate 4-5 FAQ Q&A pairs in this format:
+Q: [Question about ${pageTopic}]
+A: [50-80 word detailed answer with facts]
+
+Make questions match real search queries. Answers should be authoritative and include specific examples or data.`;
+          } else if (s.title.toLowerCase().includes('conclusion')) {
+            wordCount = '100-150 words';
+            instruction = `Write a compelling conclusion that:
+- Summarizes key takeaways (2-3 sentences)
+- Reinforces the main benefit to the reader
+- Includes a clear call-to-action
+- Mentions [INTERNAL LINK: related topic] for further reading`;
+          } else {
+            wordCount = '150-250 words';
+            instruction = `Write educational, authoritative content for this section. Include:
+- Opening hook that states the key point
+- 2-3 supporting facts, examples, or data points
+- Practical advice or actionable insight
+- [INTERNAL LINK: topic] placeholder where relevant
+- Natural keyword integration (don't stuff)
+Write in clear prose paragraphs. NO bullet points unless the section title implies a list.`;
+          }
           break;
         case 'H3':
-          instruction = 'Write 80-150 words of detailed supporting content. NO HTML tags.';
+          wordCount = '80-150 words';
+          instruction = `Write detailed supporting content for this subsection. Include:
+- Specific examples or case studies
+- Data points or statistics if applicable
+- Practical how-to advice
+- Connection to the parent H2 topic
+Keep it focused and actionable.`;
           break;
         case 'Image Alt Texts':
-          instruction = 'Write 3-5 descriptive alt text examples, each on a new line. Format: "Alt: [description]"';
+          wordCount = '5 alt texts';
+          instruction = `Generate 5 descriptive image alt texts for this article. Each should:
+- Be 10-15 words
+- Describe what's in the image visually
+- Include relevant keywords naturally
+- Be unique (don't repeat patterns)
+Format: One alt text per line, no numbering.`;
           break;
         default:
-          instruction = 'Write appropriate content for this section type.';
+          wordCount = '100-150 words';
+          instruction = 'Write appropriate content for this section.';
       }
-      return `${idx + 1}. [${s.element}] "${s.title}"
-   Current summary: ${s.summary}
-   INSTRUCTION: ${instruction}`;
-    }).join('\n\n') || '';
 
-    const prompt = `You are an expert SEO content writer. Generate publication-ready content for each section below.
+      return `
+---SECTION ${idx + 1}---
+ELEMENT: ${s.element}
+HEADING: "${s.title}"
+TARGET WORD COUNT: ${wordCount}
+INSTRUCTIONS: ${instruction}
+---END SECTION ${idx + 1}---`;
+    }).join('\n\n');
+
+    const prompt = `You are an expert SEO content writer creating publication-ready content for a blog article.
 
 TARGET URL: ${url}
-CURRENT TITLE: ${metadata?.title || 'N/A'}
+PAGE TOPIC: ${pageTopic}
+TOTAL SECTIONS TO GENERATE: ${sections.length}
 
-SECTIONS TO GENERATE (follow instructions for each):
+For EACH section below, generate COMPLETE, PUBLICATION-READY content. This is NOT a brief or outline - write the ACTUAL content that will be published.
 
-${sectionInstructions}
+${sectionPrompts}
 
-CRITICAL RULES:
-1. For Meta Title: ONLY output the title text (under 60 chars), nothing else
-2. For Meta Description: ONLY output the description text (under 155 chars), nothing else  
-3. For H1: ONLY output the headline text, nothing else
-4. For H2/H3: Write FULL PARAGRAPHS of prose content. NO HTML tags. Plain text only.
-5. For FAQs: Write Q&A pairs in plain text format:
-   Q: [question]
-   A: [answer]
-   (Repeat for 4-5 questions)
-6. Include [INTERNAL LINK: topic] placeholders where relevant
-7. Include [EXTERNAL LINK: source] placeholders where relevant
+CRITICAL REQUIREMENTS:
+1. Each section MUST have complete, standalone content
+2. H2 sections need 150-250 words of REAL prose - not summaries
+3. H3 sections need 80-150 words of detailed content
+4. FAQs need 4-5 complete Q&A pairs with detailed answers
+5. NO HTML tags in any content
+6. Include [INTERNAL LINK: topic] and [EXTERNAL LINK: source] placeholders
+7. Write in authoritative, educational tone
+8. Each section should be independently valuable
 
-RESPONSE FORMAT - Return valid JSON:
+RESPONSE FORMAT - Return ONLY valid JSON:
 {
   "sections": [
-    {"element": "Meta Title", "title": "Meta Title", "content": "[your 60-char title]"},
-    {"element": "Meta Description", "title": "Meta Description", "content": "[your 155-char description]"},
-    {"element": "H1", "title": "[optimized H1]", "content": "[same as title - just the headline]"},
-    {"element": "H2", "title": "[section title]", "content": "[150-250 words of prose...]"},
-    ...continue for all ${sections?.length || 0} sections
+    {
+      "element": "Meta Title",
+      "title": "[The heading/title]",
+      "brief": "[1-2 sentence summary of what this section covers]",
+      "fullContent": "[The COMPLETE content - NOT a summary]",
+      "wordCount": [actual word count],
+      "purpose": "[SEO purpose of this section]",
+      "comments": "[Implementation notes]"
+    }
   ]
 }
 
-Generate now:`;
+Generate complete content for all ${sections.length} sections now:`;
 
-    console.log('Generating structured article sections, count:', sections?.length);
+    console.log('Generating content for', sections.length, 'sections');
+    console.log('Sections:', sections.map(s => `${s.element}: ${s.title}`).join(', '));
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -95,7 +178,13 @@ Generate now:`;
         messages: [
           { 
             role: 'system', 
-            content: 'You are an expert SEO content writer. Respond ONLY with valid JSON. Never include HTML tags in content. Follow word count guidelines exactly.' 
+            content: `You are an expert SEO content writer. You write publication-ready blog content that is:
+- Authoritative and well-researched
+- Engaging and easy to read
+- Optimized for search engines
+- Rich with facts, examples, and actionable advice
+
+IMPORTANT: You respond ONLY with valid JSON. No markdown code blocks, no explanations.` 
           },
           { role: 'user', content: prompt }
         ],
@@ -130,25 +219,50 @@ Generate now:`;
     // Parse JSON from response
     let parsed;
     try {
-      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-      const jsonStr = jsonMatch ? jsonMatch[1].trim() : content.trim();
+      // Try to extract JSON from various formats
+      let jsonStr = content.trim();
+      
+      // Remove markdown code blocks if present
+      const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[1].trim();
+      }
+      
+      // Try to find JSON object if there's extra text
+      const jsonStart = jsonStr.indexOf('{');
+      const jsonEnd = jsonStr.lastIndexOf('}');
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
+      }
+      
       parsed = JSON.parse(jsonStr);
       
-      // Clean up any HTML tags that might have snuck in
+      // Clean up any HTML tags and validate content
       if (parsed.sections) {
         parsed.sections = parsed.sections.map((s: any) => ({
-          ...s,
-          content: s.content?.replace(/<[^>]*>/g, '').trim() || s.content,
-          title: s.title?.replace(/<[^>]*>/g, '').trim() || s.title,
+          element: s.element || '',
+          title: s.title?.replace(/<[^>]*>/g, '').trim() || '',
+          brief: s.brief?.replace(/<[^>]*>/g, '').trim() || '',
+          fullContent: s.fullContent?.replace(/<[^>]*>/g, '').trim() || '',
+          wordCount: s.wordCount || (s.fullContent?.split(/\s+/).length || 0),
+          purpose: s.purpose?.replace(/<[^>]*>/g, '').trim() || '',
+          comments: s.comments?.replace(/<[^>]*>/g, '').trim() || '',
         }));
       }
     } catch (parseError) {
       console.error('Failed to parse JSON response:', parseError);
-      console.error('Raw content:', content.substring(0, 500));
+      console.error('Raw content (first 1000 chars):', content.substring(0, 1000));
+      
+      // Return empty sections array on parse failure
       parsed = { sections: [] };
     }
 
     console.log('Parsed sections count:', parsed.sections?.length || 0);
+    
+    // Log first few sections for debugging
+    parsed.sections?.slice(0, 3).forEach((s: any, i: number) => {
+      console.log(`Section ${i}: ${s.element} - ${s.title?.substring(0, 50)} - Content length: ${s.fullContent?.length || 0}`);
+    });
 
     return new Response(JSON.stringify({ sections: parsed.sections || [] }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
