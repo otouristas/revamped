@@ -53,13 +53,38 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
       
       for (const line of lines) {
         const parts = line.split('\t');
-        if (parts.length >= 1) {
-          parsedKeywords.push({
-            keyword: parts[0].trim(),
-            impressions: parseInt(parts[1]) || 0,
-            clicks: parseInt(parts[2]) || 0,
-            position: parseFloat(parts[3]) || 0,
-          });
+        if (parts.length >= 1 && parts[0].trim()) {
+          // Skip header row
+          const firstCol = parts[0].trim().toLowerCase();
+          if (firstCol === 'top queries' || firstCol === 'query' || firstCol === 'keyword') continue;
+          
+          // GSC Comparison format: Query | Last Clicks | Prev Clicks | Last Impressions | Prev Impressions | Last CTR | Prev CTR | Last Position | Prev Position
+          // Or simple format: Keyword | Impressions | Clicks | Position
+          if (parts.length >= 8) {
+            // GSC comparison format - use "Last 3 months" values
+            parsedKeywords.push({
+              keyword: parts[0].trim(),
+              clicks: parseInt(parts[1]?.replace(/,/g, '')) || 0,      // Last 3 months Clicks
+              impressions: parseInt(parts[3]?.replace(/,/g, '')) || 0, // Last 3 months Impressions
+              position: parseFloat(parts[7]?.replace(/,/g, '')) || 0,  // Last 3 months Position
+            });
+          } else if (parts.length >= 4) {
+            // Simple format: Keyword | Impressions | Clicks | Position
+            parsedKeywords.push({
+              keyword: parts[0].trim(),
+              impressions: parseInt(parts[1]?.replace(/,/g, '')) || 0,
+              clicks: parseInt(parts[2]?.replace(/,/g, '')) || 0,
+              position: parseFloat(parts[3]?.replace(/,/g, '')) || 0,
+            });
+          } else if (parts.length >= 1) {
+            // Just keyword
+            parsedKeywords.push({
+              keyword: parts[0].trim(),
+              impressions: 0,
+              clicks: 0,
+              position: 0,
+            });
+          }
         }
       }
 
@@ -131,7 +156,7 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
             Import GSC Keywords
           </CardTitle>
           <CardDescription>
-            Paste keywords from Google Search Console (Tab-separated: Keyword, Impressions, Clicks, Position)
+            Paste keywords from Google Search Console. Supports both comparison format (Query | Last Clicks | Prev Clicks | Last Impressions | Prev Impressions | Last CTR | Prev CTR | Last Position | Prev Position) and simple format (Keyword | Impressions | Clicks | Position)
           </CardDescription>
         </CardHeader>
         <CardContent>
