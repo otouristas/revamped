@@ -8,10 +8,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Upload, Trash2, Loader2, TrendingUp, TrendingDown, Minus, Sparkles } from 'lucide-react';
+import { Search, Upload, Trash2, Loader2, TrendingUp, TrendingDown, Minus, Sparkles, Layers } from 'lucide-react';
+import { HeadingItem } from '@/types/audit';
 
 interface KeywordsPanelProps {
   auditId: string;
+  headings?: HeadingItem[];
 }
 
 interface Keyword {
@@ -27,9 +29,10 @@ interface Keyword {
   prev_ctr: number;
   intent?: string;
   cluster?: string;
+  mapped_block?: string;
 }
 
-export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
+export function KeywordsPanel({ auditId, headings = [] }: KeywordsPanelProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -198,6 +201,44 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
     },
   });
 
+  const analyzeMutation = useMutation({
+    mutationFn: async () => {
+      if (keywords.length === 0) throw new Error('No keywords to analyze');
+      
+      const { data, error } = await supabase.functions.invoke('analyze-keywords', {
+        body: { 
+          keywords: keywords.slice(0, 50).map(k => ({
+            id: k.id,
+            keyword: k.keyword,
+            position: k.position,
+            clicks: k.clicks,
+            impressions: k.impressions,
+            intent: k.intent,
+          })),
+          headings: headings.map(h => ({
+            tag: h.tag,
+            text: h.text,
+            position: h.position,
+          })),
+          auditId 
+        }
+      });
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['keywords', auditId] });
+      toast({ 
+        title: 'Keywords analyzed', 
+        description: `${data.updatedCount} keywords clustered and mapped. Found ${data.clustersFound} clusters.` 
+      });
+    },
+    onError: (error) => {
+      toast({ title: 'Analysis failed', description: error.message, variant: 'destructive' });
+    },
+  });
+
   const getIntentBadge = (intent?: string) => {
     if (!intent) return null;
     const colors: Record<string, string> = {
@@ -285,19 +326,34 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
               Keywords ({keywords.length})
             </CardTitle>
             {keywords.length > 0 && (
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => classifyMutation.mutate()}
-                disabled={classifyMutation.isPending || keywords.every(k => k.intent)}
-              >
-                {classifyMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Sparkles className="h-4 w-4 mr-2" />
-                )}
-                Classify Intent
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => classifyMutation.mutate()}
+                  disabled={classifyMutation.isPending || keywords.every(k => k.intent)}
+                >
+                  {classifyMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4 mr-2" />
+                  )}
+                  Classify Intent
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => analyzeMutation.mutate()}
+                  disabled={analyzeMutation.isPending}
+                >
+                  {analyzeMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Layers className="h-4 w-4 mr-2" />
+                  )}
+                  Cluster & Map
+                </Button>
+              </div>
             )}
           </div>
         </CardHeader>
@@ -322,6 +378,7 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
                     <TableHead className="text-right">Δ</TableHead>
                     <TableHead>Intent</TableHead>
                     <TableHead>Cluster</TableHead>
+                    <TableHead>Mapped To</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -362,6 +419,11 @@ export function KeywordsPanel({ auditId }: KeywordsPanelProps) {
                       <TableCell>{getIntentBadge(kw.intent)}</TableCell>
                       <TableCell>
                         {kw.cluster && <Badge variant="outline">{kw.cluster}</Badge>}
+                      </TableCell>
+                      <TableCell className="max-w-[150px] truncate" title={kw.mapped_block || ''}>
+                        {kw.mapped_block && (
+                          <span className="text-xs text-muted-foreground">{kw.mapped_block}</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Button

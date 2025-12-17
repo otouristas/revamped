@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.classify-keywords]
 verify_jwt = false
+
+[functions.analyze-keywords]
+verify_jwt = false

@@ -193,7 +193,7 @@ export default function AuditDetail() {
             <CTAsPanel audit={audit} />
           </TabsContent>
           <TabsContent value="keywords">
-            <KeywordsPanel auditId={audit.id} />
+            <KeywordsPanel auditId={audit.id} headings={audit.headings} />
           </TabsContent>
           <TabsContent value="analysis">
             <AIAnalysisPanel audit={audit} />
