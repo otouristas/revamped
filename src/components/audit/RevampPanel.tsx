@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { RefreshCw, ChevronDown, Copy, FileSpreadsheet, ListChecks, FileText, Loader2, Sparkles } from 'lucide-react';
+import { RefreshCw, ChevronDown, Copy, FileSpreadsheet, ListChecks, Loader2, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -18,6 +18,7 @@ interface RevampReadyRow {
   structureElement: string;
   sectionTitle: string;
   contentSummary: string;
+  fullContent: string;
   purpose: string;
   comments: string;
 }
@@ -25,8 +26,9 @@ interface RevampReadyRow {
 export function RevampPanel({ audit }: RevampPanelProps) {
   const { revampedContent, metadata, headings, url } = audit;
   const { toast } = useToast();
-  const [fullDraft, setFullDraft] = useState<string>('');
-  const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
+  const [rowsWithContent, setRowsWithContent] = useState<RevampReadyRow[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [hasGenerated, setHasGenerated] = useState(false);
 
   const hasRevamp = revampedContent?.length > 0;
 
@@ -44,6 +46,7 @@ export function RevampPanel({ audit }: RevampPanelProps) {
       structureElement: 'Meta Title',
       sectionTitle: metadata?.title || revampedContent?.find(r => r.sectionType === 'meta_title')?.recommended || '[Generate from AI]',
       contentSummary: 'Primary keyword + emotional hook; under 60 chars',
+      fullContent: '',
       purpose: 'High CTR in SERPs',
       comments: 'Aligns with user search intent',
     });
@@ -53,6 +56,7 @@ export function RevampPanel({ audit }: RevampPanelProps) {
       structureElement: 'Meta Description',
       sectionTitle: metadata?.description || revampedContent?.find(r => r.sectionType === 'meta_description')?.recommended || '[Generate from AI]',
       contentSummary: 'Short, actionable, motivational; under 155 chars',
+      fullContent: '',
       purpose: 'Featured snippet opportunity',
       comments: 'Combines primary keyword + value promise',
     });
@@ -64,6 +68,7 @@ export function RevampPanel({ audit }: RevampPanelProps) {
       structureElement: 'H1',
       sectionTitle: h1Section?.recommended || h1Heading?.text || '[Main Heading]',
       contentSummary: 'Captures search intent & emotional hook',
+      fullContent: '',
       purpose: 'Main article heading; matches URL slug',
       comments: 'Single H1 per page; keyword-rich',
     });
@@ -75,6 +80,7 @@ export function RevampPanel({ audit }: RevampPanelProps) {
           structureElement: 'H2',
           sectionTitle: section.recommended.split('.')[0] || `Section ${idx + 1}`,
           contentSummary: section.recommended.substring(0, 150) + (section.recommended.length > 150 ? '...' : ''),
+          fullContent: '',
           purpose: section.reasoning || 'Educational & authoritative section',
           comments: section.keywords?.join(', ') || 'Optimized for target queries',
         });
@@ -84,6 +90,7 @@ export function RevampPanel({ audit }: RevampPanelProps) {
           structureElement: 'H3',
           sectionTitle: section.recommended.split('.')[0] || `Subsection ${idx + 1}`,
           contentSummary: section.recommended.substring(0, 150) + (section.recommended.length > 150 ? '...' : ''),
+          fullContent: '',
           purpose: section.reasoning || 'Detailed breakdown',
           comments: section.keywords?.join(', ') || 'Supports parent H2',
         });
@@ -95,6 +102,7 @@ export function RevampPanel({ audit }: RevampPanelProps) {
       structureElement: 'H2',
       sectionTitle: 'FAQs About [Topic]',
       contentSummary: 'Answer 4-5 short questions: What is? Why important? Examples? How to improve?',
+      fullContent: '',
       purpose: 'Boosts featured snippet chances',
       comments: 'Schema-friendly; use FAQPage structured data',
     });
@@ -104,6 +112,7 @@ export function RevampPanel({ audit }: RevampPanelProps) {
       structureElement: 'H2',
       sectionTitle: 'Conclusion: [Actionable Takeaway]',
       contentSummary: 'Wrap up with motivational CTA and internal links',
+      fullContent: '',
       purpose: 'Conversion & internal link anchor',
       comments: 'Links to relevant programs/articles',
     });
@@ -113,6 +122,7 @@ export function RevampPanel({ audit }: RevampPanelProps) {
       structureElement: 'Image Alt Texts',
       sectionTitle: 'Descriptive alt text for all images',
       contentSummary: 'e.g., "A person demonstrating [topic] in action"',
+      fullContent: '',
       purpose: 'Supports image SEO',
       comments: 'Avoids over-optimization; keeps natural tone',
     });
@@ -120,15 +130,48 @@ export function RevampPanel({ audit }: RevampPanelProps) {
     return rows;
   };
 
+  const generateFullContent = async () => {
+    setIsGenerating(true);
+    try {
+      const baseRows = generateReadyTable();
+      const { data, error } = await supabase.functions.invoke('generate-article-draft', {
+        body: { 
+          revampedContent,
+          metadata,
+          url,
+          headings,
+          sections: baseRows.map(r => ({ element: r.structureElement, title: r.sectionTitle, summary: r.contentSummary }))
+        }
+      });
+      if (error) throw error;
+      
+      // Parse the sections from the AI response
+      const sections = data.sections || [];
+      const updatedRows = baseRows.map((row, idx) => ({
+        ...row,
+        sectionTitle: sections[idx]?.title || row.sectionTitle,
+        fullContent: sections[idx]?.content || row.contentSummary,
+      }));
+      
+      setRowsWithContent(updatedRows);
+      setHasGenerated(true);
+      toast({ title: 'Full article content generated!' });
+    } catch (err) {
+      toast({ title: 'Failed to generate content', variant: 'destructive' });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const copyTableAsCSV = () => {
-    const rows = generateReadyTable();
-    const headers = ['Structure Element', 'Section Title', 'Content/Focus Summary', 'Purpose', 'Comments', 'URL'];
+    const rows = hasGenerated ? rowsWithContent : generateReadyTable();
+    const headers = ['Structure Element', 'Section Title', 'Full Content', 'Purpose', 'Comments', 'URL'];
     const csvContent = [
       headers.join('\t'),
       ...rows.map(row => [
         row.structureElement,
         row.sectionTitle,
-        row.contentSummary,
+        hasGenerated ? row.fullContent : row.contentSummary,
         row.purpose,
         row.comments,
         url || ''
@@ -139,7 +182,7 @@ export function RevampPanel({ audit }: RevampPanelProps) {
     toast({ title: 'Table copied! Paste directly into Google Sheets or Excel' });
   };
 
-  const readyRows = generateReadyTable();
+  const displayRows = hasGenerated ? rowsWithContent : generateReadyTable();
 
   return (
     <div className="space-y-6">
@@ -160,32 +203,49 @@ export function RevampPanel({ audit }: RevampPanelProps) {
               <FileSpreadsheet className="h-4 w-4" />
               Revamp Ready
             </TabsTrigger>
-            <TabsTrigger value="draft" className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              Full Article Draft
-            </TabsTrigger>
             <TabsTrigger value="suggestions" className="flex items-center gap-2">
               <ListChecks className="h-4 w-4" />
               Suggestions
             </TabsTrigger>
           </TabsList>
 
-          {/* REVAMP READY TAB - Copy-paste friendly table */}
+          {/* REVAMP READY TAB - Merged table with full content */}
           <TabsContent value="ready" className="space-y-4">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <CardTitle className="flex items-center gap-2">
                     <FileSpreadsheet className="h-5 w-5" />
                     Ready-to-Use Blog Structure
                   </CardTitle>
-                  <Button onClick={copyTableAsCSV} className="flex items-center gap-2">
-                    <Copy className="h-4 w-4" />
-                    Copy for Sheets/Excel
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={generateFullContent}
+                      disabled={isGenerating}
+                      variant={hasGenerated ? 'outline' : 'default'}
+                    >
+                      {isGenerating ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          {hasGenerated ? 'Regenerate Content' : 'Generate Full Content'}
+                        </>
+                      )}
+                    </Button>
+                    <Button onClick={copyTableAsCSV} variant="outline">
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy for Sheets
+                    </Button>
+                  </div>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Click "Copy for Sheets/Excel" to paste directly into Google Sheets or Excel. All columns included.
+                  {hasGenerated 
+                    ? 'Full article content generated. Copy to Sheets/Excel or edit directly.' 
+                    : 'Click "Generate Full Content" to create complete prose for each section.'}
                 </p>
               </CardHeader>
               <CardContent>
@@ -193,16 +253,16 @@ export function RevampPanel({ audit }: RevampPanelProps) {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[120px]">Structure Element</TableHead>
-                        <TableHead className="min-w-[200px]">Section Title</TableHead>
-                        <TableHead className="min-w-[250px]">Content/Focus Summary</TableHead>
-                        <TableHead className="min-w-[180px]">Purpose</TableHead>
-                        <TableHead className="min-w-[180px]">Comments</TableHead>
+                        <TableHead className="w-[100px]">Element</TableHead>
+                        <TableHead className="w-[200px]">Section Title</TableHead>
+                        <TableHead className="min-w-[400px]">Full Content</TableHead>
+                        <TableHead className="w-[150px]">Purpose</TableHead>
+                        <TableHead className="w-[150px]">Comments</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {readyRows.map((row, index) => (
-                        <TableRow key={index}>
+                      {displayRows.map((row, index) => (
+                        <TableRow key={index} className="align-top">
                           <TableCell>
                             <Badge variant={
                               row.structureElement === 'Meta Title' || row.structureElement === 'Meta Description' ? 'default' :
@@ -214,8 +274,24 @@ export function RevampPanel({ audit }: RevampPanelProps) {
                             </Badge>
                           </TableCell>
                           <TableCell className="font-medium">{row.sectionTitle}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{row.contentSummary}</TableCell>
-                          <TableCell className="text-sm">{row.purpose}</TableCell>
+                          <TableCell>
+                            <div className="relative group">
+                              <div className="text-sm whitespace-pre-wrap max-h-[200px] overflow-y-auto">
+                                {hasGenerated ? row.fullContent : row.contentSummary}
+                              </div>
+                              {hasGenerated && row.fullContent && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => copyToClipboard(row.fullContent)}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{row.purpose}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">{row.comments}</TableCell>
                         </TableRow>
                       ))}
@@ -241,81 +317,7 @@ export function RevampPanel({ audit }: RevampPanelProps) {
             </Card>
           </TabsContent>
 
-          {/* FULL ARTICLE DRAFT TAB */}
-          <TabsContent value="draft" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    Full Article Draft
-                  </CardTitle>
-                  <div className="flex gap-2">
-                    <Button 
-                      onClick={async () => {
-                        setIsGeneratingDraft(true);
-                        try {
-                          const { data, error } = await supabase.functions.invoke('generate-article-draft', {
-                            body: { 
-                              revampedContent,
-                              metadata,
-                              url,
-                              headings
-                            }
-                          });
-                          if (error) throw error;
-                          setFullDraft(data.draft);
-                          toast({ title: 'Article draft generated!' });
-                        } catch (err) {
-                          toast({ title: 'Failed to generate draft', variant: 'destructive' });
-                        } finally {
-                          setIsGeneratingDraft(false);
-                        }
-                      }}
-                      disabled={isGeneratingDraft}
-                    >
-                      {isGeneratingDraft ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-4 w-4 mr-2" />
-                          Generate Full Draft
-                        </>
-                      )}
-                    </Button>
-                    {fullDraft && (
-                      <Button variant="outline" onClick={() => copyToClipboard(fullDraft)}>
-                        <Copy className="h-4 w-4 mr-2" />
-                        Copy All
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Generate complete prose content for each section, ready for publishing.
-                </p>
-              </CardHeader>
-              <CardContent>
-                {!fullDraft ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>Click "Generate Full Draft" to create complete article content.</p>
-                  </div>
-                ) : (
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <div className="whitespace-pre-wrap font-mono text-sm bg-muted/50 p-6 rounded-lg overflow-x-auto">
-                      {fullDraft}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* DETAILED SUGGESTIONS TAB - Original functionality */}
+          {/* DETAILED SUGGESTIONS TAB */}
           <TabsContent value="suggestions" className="space-y-4">
             <Card>
               <CardHeader>
@@ -388,7 +390,6 @@ function RevampSection({ section, index, onCopy }: RevampSectionProps) {
         </CollapsibleTrigger>
         <CollapsibleContent>
           <CardContent className="pt-0 space-y-4">
-            {/* Keywords */}
             {section.keywords?.length > 0 && (
               <div>
                 <div className="text-sm font-medium mb-2">Target Keywords</div>
@@ -400,7 +401,6 @@ function RevampSection({ section, index, onCopy }: RevampSectionProps) {
               </div>
             )}
 
-            {/* Original vs Recommended */}
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -423,7 +423,6 @@ function RevampSection({ section, index, onCopy }: RevampSectionProps) {
               </div>
             </div>
 
-            {/* Reasoning */}
             {section.reasoning && (
               <div className="bg-muted/50 p-4 rounded-lg">
                 <div className="text-sm font-medium mb-2">Why this change?</div>
