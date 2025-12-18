@@ -1,0 +1,22 @@
+# Supabase Configuration
+# Copy this to: supabase/config.toml
+
+project_id = "your-project-id"
+
+[functions.firecrawl-scrape]
+verify_jwt = false
+
+[functions.ai-analyze]
+verify_jwt = false
+
+[functions.generate-guest-post]
+verify_jwt = false
+
+[functions.generate-article-draft]
+verify_jwt = false
+
+[functions.classify-keywords]
+verify_jwt = false
+
+[functions.analyze-keywords]
+verify_jwt = false
