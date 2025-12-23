@@ -213,6 +213,12 @@ export default function AuditDetail() {
   );
 }
 
+function ensureArray<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') return [];
+  return [];
+}
+
 function transformAudit(data: Record<string, unknown>): Audit {
   return {
     id: data.id as string,
@@ -221,14 +227,18 @@ function transformAudit(data: Record<string, unknown>): Audit {
     status: data.status as Audit['status'],
     rawHtml: data.raw_html as string | undefined,
     markdown: data.markdown as string | undefined,
-    metadata: (data.metadata as Audit['metadata']) ?? {},
-    headings: (data.headings as Audit['headings']) ?? [],
-    bodyContent: (data.body_content as Audit['bodyContent']) ?? [],
-    ctas: (data.ctas as Audit['ctas']) ?? [],
-    links: (data.links as Audit['links']) ?? [],
-    media: (data.media as Audit['media']) ?? [],
-    aiAnalysis: (data.ai_analysis as Audit['aiAnalysis']) ?? { overallScore: 0, aiOverviewEligibility: 'low', citationPotential: 'low', contentFreshness: 'stale', issues: [], recommendations: [] },
-    revampedContent: (data.revamped_content as Audit['revampedContent']) ?? [],
+    metadata: (data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata)) 
+      ? (data.metadata as Audit['metadata']) 
+      : {},
+    headings: ensureArray<Audit['headings'][number]>(data.headings),
+    bodyContent: ensureArray<Audit['bodyContent'][number]>(data.body_content),
+    ctas: ensureArray<Audit['ctas'][number]>(data.ctas),
+    links: ensureArray<Audit['links'][number]>(data.links),
+    media: ensureArray<Audit['media'][number]>(data.media),
+    aiAnalysis: (data.ai_analysis && typeof data.ai_analysis === 'object' && !Array.isArray(data.ai_analysis))
+      ? (data.ai_analysis as Audit['aiAnalysis']) 
+      : { overallScore: 0, aiOverviewEligibility: 'low', citationPotential: 'low', contentFreshness: 'stale', issues: [], recommendations: [] },
+    revampedContent: ensureArray<Audit['revampedContent'][number]>(data.revamped_content),
     createdAt: data.created_at as string,
     updatedAt: data.updated_at as string,
   };
